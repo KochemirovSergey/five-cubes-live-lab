@@ -1,0 +1,31 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "5.8",
+  "Category": "Education",
+  "Description": "Five cubes, GPT-Live and MCP highlight MVP",
+  "Modules": [
+    {
+      "Name": "FiveCubes",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "AudioCapture",
+      "Enabled": true
+    },
+    {
+      "Name": "Landmass",
+      "Enabled": false
+    },
+    {
+      "Name": "Water",
+      "Enabled": false
+    },
+    {
+      "Name": "Volumetrics",
+      "Enabled": false
+    }
+  ]
+}

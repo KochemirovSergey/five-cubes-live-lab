@@ -1,0 +1,13 @@
+node_modules/
+.env*
+!.env.example
+.runtime/
+.cache/
+.local_tmp/
+.playwright-mcp/
+unreal/**/Binaries/
+unreal/**/Intermediate/
+unreal/**/Saved/
+unreal/**/DerivedDataCache/
+.DS_Store
+unreal/**/Build/Mac/
