@@ -2,12 +2,13 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { TARGETS } from './targets.js';
 import { z } from 'zod';
 
 export const toolSchemas = {
-  lab_get_state: { description: 'Read the current scene and allowed cube IDs.', properties: {} },
-  lab_highlight: { description: 'Highlight a cube; success requires acknowledgment from the scene.',
-    properties: { target_id: { type: 'string', enum: ['cube_1', 'cube_2', 'cube_3', 'cube_4', 'cube_5'] },
+  lab_get_state: { description: 'Read the current scene and allowed panel IDs.', properties: {} },
+  lab_highlight: { description: 'Highlight a panel control; success requires acknowledgment from the scene.',
+    properties: { target_id: { type: 'string', enum: TARGETS },
       text: { type: 'string', maxLength: 120 } } },
   lab_clear_highlight: { description: 'Clear the scene highlight.', properties: {} },
 };

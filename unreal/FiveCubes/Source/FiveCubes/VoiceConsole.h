@@ -20,7 +20,7 @@ public:
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     void StartVoice();
     void StopVoice();
-    void Command(int32 Cube);
+    void ClearHighlight();
     static FString ConnectionPath;
     FString Status = TEXT("Запуск сервера…"), Transcript, ToolStatus;
     bool bConnected=false, bReady=false, bStarting=false;

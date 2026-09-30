@@ -3,6 +3,7 @@
 import WebSocket from 'ws';
 import { ToolLoop } from '../server/tool-loop.js';
 import { liveTools } from '../server/mcp.js';
+import { liveInstructions, backendInstructions } from '../server/scenario.js';
 import { readFile } from 'node:fs/promises';
 
 let inputAudio;
@@ -45,11 +46,11 @@ const deadline = setTimeout(close, 45000);
 const hardDeadline = setTimeout(() => socket.terminate(), 60000);
 socket.on('open', () => send({ type: 'session.start', session: {
   model: process.env.OPENAI_LIVE_MODEL || 'gpt-live-1',
-  instructions: 'Говори по-русски кратко. Все действия выполняет backend. Сообщай успех только после подтверждения инструмента.',
+  instructions: liveInstructions,
   audio: { format: { type: 'audio/pcm', rate: 24000 }, output: { voice: 'marin' } },
   delegation: { type: 'responses', responses: {
     model: process.env.OPENAI_BACKEND_MODEL || 'gpt-6-sol',
-    instructions: 'Read lab_get_state, then highlight the requested cube using lab_highlight. Report only confirmed results. Use a short Russian label.',
+    instructions: backendInstructions,
     tools: liveTools, tool_choice: 'auto', parallel_tool_calls: false,
   } },
 } }));
@@ -66,7 +67,7 @@ socket.on('message', raw => {
       if (!closing) send({ type: 'session.input_audio.append', audio: chunk.toString('base64') });
     }, 20);
     if (!inputAudio) {
-      send({ type: 'response.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Подсвети четвёртый кубик, подпись: Проверка GPT-Live.' }] } });
+      send({ type: 'response.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: `Прочитай состояние и подсвети указанный элемент ${process.env.TEST_TARGET_ID || 'panel.toggle'} независимо от текущего этапа, подпись: Проверка GPT-Live.` }] } });
       send({ type: 'response.create' });
     }
   } else if (e.type === 'session.output_audio.delta') {

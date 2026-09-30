@@ -24,6 +24,10 @@ shutil.copy2(root / '.cache/node/node-v22.22.3-darwin-arm64/bin/node', resources
 shutil.copytree(root / 'server', resources / 'server', dirs_exist_ok=True)
 shutil.copytree(root / 'node_modules', resources / 'node_modules', dirs_exist_ok=True)
 shutil.copy2(root / 'package.json', resources / 'package.json')
+scenario_dir = resources / 'unreal/FiveCubes/Content/Lab'
+scenario_dir.mkdir(parents=True, exist_ok=True)
+for name in ('scenario.json', 'targets.json'):
+    shutil.copy2(root / 'unreal/FiveCubes/Content/Lab' / name, scenario_dir / name)
 plist_path = app / 'Contents/Info.plist'
 with plist_path.open('rb') as f: plist = plistlib.load(f)
 plist['NSMicrophoneUsageDescription'] = 'Голосовой разговор с помощником лаборатории. Звук передаётся в OpenAI только после начала разговора.'

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { TARGETS } from '../server/targets.js';
 import { callMcp } from '../server/mcp.js';
 
 const base = `http://127.0.0.1:${process.env.PORT || 3210}`;
@@ -16,7 +17,7 @@ async function call(name, args = {}, revision = config.state.revision) {
   return { output, data };
 }
 const { data: state } = await call('lab_get_state');
-assert.equal(state.allowed_targets.length, 5);
+assert.deepEqual(state.allowed_targets, TARGETS);
 for (const target_id of state.allowed_targets) {
   const { output, data } = await call('lab_highlight', { target_id, text: `MCP: ${target_id}` });
   assert.equal(output.isError, false);
@@ -25,7 +26,7 @@ for (const target_id of state.allowed_targets) {
   assert.equal(data.target_id, target_id);
 }
 assert.equal((await call('lab_highlight', { target_id: 'unknown_actor', text: '' })).output.isError, true);
-assert.equal((await call('lab_highlight', { target_id: 'cube_1', text: '' }, config.state.revision - 1)).data.error, 'STALE_CONTEXT');
+assert.equal((await call('lab_highlight', { target_id: config.state.allowed_targets[0] || 'panel.rotary', text: '' }, config.state.revision - 1)).data.error, 'STALE_CONTEXT');
 assert.equal((await call('lab_clear_highlight')).data.confirmed, true);
 const report = { time: new Date().toISOString(), adapter: expectedAdapter, passed: true, records };
 await mkdir('.runtime', { recursive: true });

@@ -73,7 +73,8 @@ void AVoiceConsole::Receive(const FString& Raw)
     if(Type==TEXT("hello_ack")||Type==TEXT("lab.state")){
         const bool WasSceneReady=bSceneReady; bConnected=true;const TSharedPtr<FJsonObject>* State;if(O->TryGetObjectField(TEXT("state"),State)){(*State)->TryGetBoolField(TEXT("connected"),bSceneReady);}
         if(!bReady&&!bStarting&&(Type==TEXT("hello_ack")||WasSceneReady!=bSceneReady))Status=bSceneReady?TEXT("Готово. Нажмите «Начать разговор»."):TEXT("Ожидание сцены…");
-    }else if(Type==TEXT("voice.ready")){bStarting=false;bReady=true;Status=TEXT("Разговор подключён. Говорите свободно.");}
+    }else if(Type==TEXT("voice.reset_output")){AudioFragments.Reset();if(Speaker)Speaker->Stop();if(Wave)Wave->ResetAudio();}
+    else if(Type==TEXT("voice.ready")){bStarting=false;bReady=true;Status=TEXT("Разговор подключён. Говорите свободно.");}
     else if(Type==TEXT("voice.closed")){StopAudio();bStarting=false;bool Final=false;O->TryGetBoolField(TEXT("finalized"),Final);Status=Final?TEXT("Разговор завершён."):TEXT("Соединение завершено без подтверждения GPT-Live.");}
     else if(Type==TEXT("voice.error")){FString Code;O->TryGetStringField(TEXT("code"),Code);StopAudio();bStarting=false;Status=TEXT("Ошибка: ")+Code;}
     else if(Type==TEXT("voice.transcript")){FString Who,Text;O->TryGetStringField(TEXT("speaker"),Who);O->TryGetStringField(TEXT("text"),Text);if(Who!=LastSpeaker){Transcript+=Who==TEXT("user")?TEXT("\nВы: "):TEXT("\nАссистент: ");LastSpeaker=Who;}Transcript+=Text;Transcript=Transcript.Right(4000);}
@@ -107,13 +108,12 @@ void AVoiceConsole::StopAudio()
     if(Speaker)Speaker->Stop();if(Wave)Wave->ResetAudio();
     FScopeLock Lock(&AudioLock);Resampler.Reset();Level=0;
 }
-void AVoiceConsole::StopVoice(){++PermissionGeneration;const bool Active=bStarting||bReady;StopAudio();if(Active){bStarting=true;Send(TEXT("voice.stop"));Status=TEXT("Завершение разговора…");}else bStarting=false;Command(0);}
-void AVoiceConsole::Command(int32 Cube)
-{
-    UE_LOG(LogTemp,Display,TEXT("Lab UI: cube button %d clicked; connected=%d"),Cube,bConnected);
-    if(!Socket||!bConnected){ToolStatus=TEXT("Нет связи с сервером: команда не отправлена.");return;}auto O=MakeShared<FJsonObject>();O->SetStringField(TEXT("type"),TEXT("lab.command"));O->SetStringField(TEXT("name"),Cube?TEXT("lab_highlight"):TEXT("lab_clear_highlight"));auto Args=MakeShared<FJsonObject>();
-    if(Cube){Args->SetStringField(TEXT("target_id"),FString::Printf(TEXT("cube_%d"),Cube));Args->SetStringField(TEXT("text"),FString::Printf(TEXT("Кубик %d"),Cube));}O->SetObjectField(TEXT("args"),Args);Socket->Send(Json(O));ToolStatus=TEXT("Ожидание ACK от сцены…");
+void AVoiceConsole::StopVoice(){++PermissionGeneration;const bool Active=bStarting||bReady;StopAudio();if(Active){bStarting=true;Send(TEXT("voice.stop"));Status=TEXT("Завершение разговора…");}else bStarting=false;ClearHighlight();}
+void AVoiceConsole::ClearHighlight() {
+    if(!Socket||!Socket->IsConnected())return;
+    auto O=MakeShared<FJsonObject>();O->SetStringField(TEXT("type"),TEXT("lab.command"));O->SetStringField(TEXT("name"),TEXT("lab_clear_highlight"));O->SetObjectField(TEXT("args"),MakeShared<FJsonObject>());Socket->Send(Json(O));
 }
+
 void AVoiceConsole::Tick(float D)
 {
     Super::Tick(D);
@@ -128,7 +128,7 @@ void AVoiceConsole::Tick(float D)
                 Viewport->SetHideCursorDuringCapture(false);
             }
             bPanelInputReady=true;
-            UE_LOG(LogTemp,Display,TEXT("Lab UI: panel focused, UI-only input, mouse capture disabled"));
+            UE_LOG(LogTemp,Display,TEXT("Lab UI: panel focused, Slate UI input for buttons and 3D controls"));
         }
     }
     if(!bConnected&&FPlatformTime::Seconds()>NextConnect)Connect();

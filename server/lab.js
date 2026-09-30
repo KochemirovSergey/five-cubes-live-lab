@@ -1,7 +1,9 @@
 import { randomUUID, randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 
-export const TARGETS = ['cube_1', 'cube_2', 'cube_3', 'cube_4', 'cube_5'];
+import { scenario } from './scenario.js';
+import { TARGETS } from './targets.js';
+export { TARGETS };
 export const result = (data, isError = false) => ({
   isError, content: [{ type: 'text', text: JSON.stringify(data) }],
 });
@@ -52,18 +54,32 @@ export class Lab extends EventEmitter {
     this.log('cancelled');
   }
   update(state) {
-    if (state.session_id !== this.id || typeof state.scene_version !== 'string' ||
-        !state.scene_version || state.stage_id !== 'five_cubes' || state.stage !== 1 ||
-        state.stages_total !== 1 || !Array.isArray(state.allowed_targets) ||
-        state.allowed_targets.some(id => !TARGETS.includes(id)) ||
-        !Array.isArray(state.completed)) throw new Error('INVALID_SCENE_STATE');
-    this.invalidate('STATE_CHANGED');
-    this.revision++;
-    this.state = { session_id: this.id, scene_version: state.scene_version, stage: 1,
-      stages_total: 1, stage_id: 'five_cubes', stage_goal: 'Попросите подсветить один из пяти кубиков',
-      completed: state.completed, allowed_targets: [...state.allowed_targets], instrument_state: {} };
-    this.log('state', { state: this.snapshot() });
+    const index = state.stage - 1;
+    const finished = state.finished === true;
+    const step = scenario.steps[index];
+    const expectedCompleted = scenario.steps.slice(0, finished ? 4 : index).map(s => s.id);
+    const allowed = [...TARGETS];
+    const instruments = state.instrument_state;
+    if (state.session_id !== this.id || typeof state.scene_version !== 'string' || !state.scene_version ||
+        !Number.isInteger(state.state_seq) || state.state_seq < 1 || !step ||
+        state.stages_total !== 4 || state.stage_id !== (finished ? 'complete' : step.id) ||
+        (finished && state.stage !== 4) || JSON.stringify(state.completed) !== JSON.stringify(expectedCompleted) ||
+        JSON.stringify(state.allowed_targets) !== JSON.stringify(allowed) || !instruments ||
+        !Number.isFinite(instruments.rotary_angle) || !['left','right'].includes(instruments.slider) ||
+        typeof instruments.toggle_up !== 'boolean' || typeof instruments.keypad_input !== 'string' ||
+        !/^\d{0,3}$/.test(instruments.keypad_input) || typeof instruments.code_error !== 'boolean') throw new Error('INVALID_SCENE_STATE');
+    if (this.state?.scene_version === state.scene_version && state.state_seq <= this.state.state_seq) return;
+    const changed = !this.state || this.state.scene_version !== state.scene_version || this.state.stage_id !== state.stage_id;
+    if (changed) { this.invalidate('STATE_CHANGED'); this.revision++; }
+    this.state = { session_id: this.id, scene_version: state.scene_version, state_seq: state.state_seq,
+      stage: state.stage, stages_total: 4, stage_id: state.stage_id, finished,
+      stage_goal: finished ? 'Упражнение выполнено' : step.goal,
+      completed: [...state.completed], allowed_targets: allowed,
+      instrument_state: { rotary_angle: instruments.rotary_angle, slider: instruments.slider,
+        toggle_up: instruments.toggle_up, keypad_input: instruments.keypad_input, code_error: instruments.code_error } };
+    this.log(changed ? 'stage_changed' : 'state', { state: this.snapshot() });
   }
+
   ack(socket, message) {
     if (this.adapter?.socket !== socket || message.session_id !== this.id) return;
     const pending = this.pending.get(message.command_id);

@@ -9,6 +9,7 @@ class FIVECUBES_API ULabWorldLabel : public UUserWidget
     GENERATED_BODY()
 public:
     virtual TSharedRef<SWidget> RebuildWidget() override;
+    void Ink(FLinearColor Color);
     void Caption(const FString& Value, bool Highlight);
 private:
     UPROPERTY() TObjectPtr<UTextBlock> Text;

@@ -12,6 +12,12 @@ class FIVECUBES_API ULabPanel : public UUserWidget
 public:
     TWeakObjectPtr<AVoiceConsole> Console;
     virtual TSharedRef<SWidget> RebuildWidget() override;
+    virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry&,const FPointerEvent&) override;
+    virtual FReply NativeOnMouseButtonDown(const FGeometry&,const FPointerEvent&) override;
+    virtual FReply NativeOnMouseButtonDoubleClick(const FGeometry&,const FPointerEvent&) override;
+    virtual FReply NativeOnMouseButtonUp(const FGeometry&,const FPointerEvent&) override;
+    virtual FReply NativeOnMouseMove(const FGeometry&,const FPointerEvent&) override;
+    virtual void NativeOnMouseCaptureLost(const FCaptureLostEvent&) override;
     virtual void NativeTick(const FGeometry&, float) override;
 private:
     UPROPERTY() TObjectPtr<UTextBlock> StateText;
@@ -19,5 +25,6 @@ private:
     UPROPERTY() TObjectPtr<UTextBlock> ResultText;
     UPROPERTY() TObjectPtr<UButton> StartButton;
     UFUNCTION() void Start(); UFUNCTION() void Stop(); UFUNCTION() void Clear();
-    UFUNCTION() void One(); UFUNCTION() void Two(); UFUNCTION() void Three(); UFUNCTION() void Four(); UFUNCTION() void Five();
+    UFUNCTION() void Reset();
+    UPROPERTY() TObjectPtr<UTextBlock> GoalText;
 };

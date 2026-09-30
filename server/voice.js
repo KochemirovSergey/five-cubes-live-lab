@@ -1,6 +1,7 @@
 import WebSocket, { WebSocketServer } from 'ws';
 import { ToolLoop } from './tool-loop.js';
 import { callMcp, liveTools } from './mcp.js';
+import { scenario, liveInstructions, backendInstructions } from './scenario.js';
 
 // The native client gets lab events/audio, never provider credentials or tool authority.
 export function voiceGateway({ lab, apiKey, baseUrl, onDesktopExit, connectProvider = () => new WebSocket('wss://api.openai.com/v1/live/sessions', {
@@ -12,11 +13,12 @@ export function voiceGateway({ lab, apiKey, baseUrl, onDesktopExit, connectProvi
   sockets.on('connection', client => {
     let authenticated = false, upstream, loop, ready = false, closing = false, startTimer, closeTimer;
     let receivedAudio = 0, stopPromise, resolveStop;
+    let contextTimer;
     const send = data => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(data)); };
     const sendUp = data => { if (upstream?.readyState === WebSocket.OPEN) upstream.send(JSON.stringify(data)); };
     const helloTimer = setTimeout(() => client.close(1008, 'HELLO_TIMEOUT'), 5000);
     const finish = confirmed => {
-      clearTimeout(startTimer); clearTimeout(closeTimer);
+      clearTimeout(startTimer); clearTimeout(closeTimer); clearTimeout(contextTimer);
       ready = false; loop?.close();
       if (!confirmed && upstream && !closing) void cancel();
       const previous = upstream; upstream = null;
@@ -39,9 +41,24 @@ export function voiceGateway({ lab, apiKey, baseUrl, onDesktopExit, connectProvi
       return stopPromise;
     };
     sessions.add(stop);
+    const append = (type, content) => sendUp({ type, content, delegation_id: null });
+    const updateContext = () => {
+      clearTimeout(contextTimer);
+      append('session.thinking.append', JSON.stringify(lab.snapshot()));
+    };
+    const introduce = () => {
+      updateContext();
+      append('session.instructions.append', 'Открой разговор: произнеси только это общее вступление, без вызова инструментов, подсветки и подсказки первого шага. Затем жди просьбы пользователя. Вступление: ' + scenario.introduction);
+    };
     const onLab = event => {
       send({ type: 'lab.state', state: lab.snapshot() });
-      if (['scene_disconnected', 'state'].includes(event.type) && upstream) stop();
+      if (event.type === 'scene_disconnected' && upstream) { stop(); return; }
+      if (!ready || closing) return;
+      if (event.type === 'stage_changed') updateContext();
+      else if (event.type === 'state') {
+        clearTimeout(contextTimer);
+        contextTimer = setTimeout(() => { if (ready && !closing) updateContext(); }, 250);
+      }
     };
     const start = () => {
       if (upstream) return send({ type: 'voice.error', code: 'ALREADY_STARTED' });
@@ -59,16 +76,16 @@ export function voiceGateway({ lab, apiKey, baseUrl, onDesktopExit, connectProvi
       });
       upstream.on('open', () => sendUp({ type: 'session.start', session: {
         model: process.env.OPENAI_LIVE_MODEL || 'gpt-live-1',
-        instructions: 'Ты голосовой помощник лаборатории из пяти кубиков. Говори по-русски кратко. Ты не видишь сцену. Передавай действия backend. Подтверждай успех только после инструмента. При перебивании уступай слово.',
+        instructions: liveInstructions,
         audio: { format: { type: 'audio/pcm', rate: 24000 }, output: { voice: 'marin' } },
         delegation: { type: 'responses', responses: {
           model: process.env.OPENAI_BACKEND_MODEL || 'gpt-6-sol', tools: liveTools, parallel_tool_calls: false,
-          instructions: 'Сначала прочитай lab_get_state. Подсвечивай только разрешённый cube_1..cube_5 через lab_highlight, подпись по-русски. Для снятия lab_clear_highlight. Сообщай успех только при confirmed:true. Не меняй приборы или этапы.',
+          instructions: backendInstructions,
         } },
       } }));
       upstream.on('message', raw => {
         let e; try { e = JSON.parse(raw); } catch { send({ type: 'voice.error', code: 'PROVIDER_PROTOCOL' }); stop(); return; }
-        if (e.type === 'session.started') { clearTimeout(startTimer); if (closing) return; ready = true; send({ type: 'voice.ready' }); }
+        if (e.type === 'session.started') { clearTimeout(startTimer); if (closing) return; ready = true; send({ type: 'voice.ready' }); introduce(); }
         else if (e.type === 'session.closed') { lab.log('voice_closed', { finalized: true, input_bytes: receivedAudio }); finish(true); return; }
         else if (e.type === 'error') { send({ type: 'voice.error', code: 'PROVIDER_ERROR' }); stop(); return; }
         if (closing) return;

@@ -1,0 +1,84 @@
+{
+  "targets": [
+    {
+      "id": "panel.rotary",
+      "label": "Круглая ручка",
+      "section": "rotary"
+    },
+    {
+      "id": "panel.slider",
+      "label": "Горизонтальный переключатель",
+      "section": "slider"
+    },
+    {
+      "id": "panel.keypad",
+      "label": "Все клавиши клавиатуры",
+      "section": "keypad"
+    },
+    {
+      "id": "panel.toggle",
+      "label": "Рычажный тумблер",
+      "section": "toggle"
+    },
+    {
+      "id": "panel.keypad.7",
+      "label": "Клавиша 7",
+      "section": "keypad"
+    },
+    {
+      "id": "panel.keypad.8",
+      "label": "Клавиша 8",
+      "section": "keypad"
+    },
+    {
+      "id": "panel.keypad.9",
+      "label": "Клавиша 9",
+      "section": "keypad"
+    },
+    {
+      "id": "panel.keypad.4",
+      "label": "Клавиша 4",
+      "section": "keypad"
+    },
+    {
+      "id": "panel.keypad.5",
+      "label": "Клавиша 5",
+      "section": "keypad"
+    },
+    {
+      "id": "panel.keypad.6",
+      "label": "Клавиша 6",
+      "section": "keypad"
+    },
+    {
+      "id": "panel.keypad.1",
+      "label": "Клавиша 1",
+      "section": "keypad"
+    },
+    {
+      "id": "panel.keypad.2",
+      "label": "Клавиша 2",
+      "section": "keypad"
+    },
+    {
+      "id": "panel.keypad.3",
+      "label": "Клавиша 3",
+      "section": "keypad"
+    },
+    {
+      "id": "panel.keypad.C",
+      "label": "Очистить",
+      "section": "keypad"
+    },
+    {
+      "id": "panel.keypad.0",
+      "label": "Клавиша 0",
+      "section": "keypad"
+    },
+    {
+      "id": "panel.keypad.E",
+      "label": "Enter",
+      "section": "keypad"
+    }
+  ]
+}

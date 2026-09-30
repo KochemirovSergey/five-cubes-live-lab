@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter, once } from 'node:events';
 import WebSocket from 'ws';
 import { createApp } from '../server/index.js';
-import { TARGETS } from '../server/lab.js';
+import { stateFor } from './panel-state.js';
 class Provider extends EventEmitter {
   readyState = WebSocket.OPEN; bufferedAmount = 0; sent = [];
   send(raw) {
@@ -23,7 +23,7 @@ async function fixture(t) {
   const { lab } = runtime;
   const adapter = { send: raw => { const c = JSON.parse(raw); queueMicrotask(() => lab.ack(adapter, { ...c, ok: true })); } };
   lab.attach(adapter, 'unreal');
-  lab.update({ session_id: lab.id, scene_version: 'v1', stage: 1, stages_total: 1, stage_id: 'five_cubes', allowed_targets: TARGETS, completed: [] });
+  lab.update(stateFor(lab));
   const client = new WebSocket(runtime.baseUrl.replace('http:', 'ws:') + '/voice');
   const messages = []; client.on('message', (raw, binary) => messages.push(binary ? Buffer.from(raw) : JSON.parse(raw)));
   await once(client, 'open');
@@ -43,7 +43,7 @@ test('native voice PCM round trip, confirmed MCP call and graceful stop', async 
   await waitFor(() => f.messages.some(Buffer.isBuffer));
   const event = e => p.event({ type: 'response.event', delegation_id: 'd1', event: e });
   event({ type: 'response.created', response: { id: 'r1' } });
-  event({ type: 'response.output_item.done', item: { type: 'function_call', call_id: 'call1', name: 'lab_highlight', arguments: JSON.stringify({ target_id: 'cube_2', text: 'Второй' }) } });
+  event({ type: 'response.output_item.done', item: { type: 'function_call', call_id: 'call1', name: 'lab_highlight', arguments: JSON.stringify({ target_id: 'panel.rotary', text: 'Второй' }) } });
   event({ type: 'response.completed' });
   await waitFor(() => p.sent.some(e => e.type === 'response.create'));
   assert.equal(JSON.parse(p.sent.find(e => e.type === 'response.item.create').item.output).isError, false);
@@ -72,4 +72,28 @@ test('native provider backpressure stops session, no PCM accumulates', async t =
   await waitFor(() => f.messages.some(e => e.type === 'voice.closed'));
   assert.ok(f.messages.some(e => e.code === 'AUDIO_BACKPRESSURE'));
   assert.equal(f.providers[0].sent.filter(e => e.type === 'session.input_audio.append').length, 0);
+});
+
+test('intro and stage updates never trigger highlights or automatic stage speech', async t => {
+  const f = await fixture(t); f.send({ type: 'voice.start' });
+  await waitFor(() => f.providers[0]?.sent.some(e => e.type === 'session.instructions.append'));
+  const p = f.providers[0];
+  assert.ok(p.sent.some(e => e.content?.includes('Открой разговор')));
+  assert.equal(f.lab.events.filter(e=>e.type==='tool_call').length,0);
+  // A user-requested tool delegation selects a future-stage control.
+  const event = e => p.event({ type: 'response.event', delegation_id: 'requested', event: e });
+  event({ type: 'response.created', response: { id: 'request1' } });
+  event({ type: 'response.output_item.done', item: { type: 'function_call', call_id: 'highlight1', name: 'lab_highlight', arguments: JSON.stringify({ target_id: 'panel.toggle', text: 'Рычаг' }) } });
+  event({ type: 'response.completed' });
+  await waitFor(() => f.lab.events.some(e=>e.type==='tool_result'));
+  const callsBefore=f.lab.events.filter(e=>e.type==='tool_call').length;
+  for(const index of [1,2,3,4])f.lab.update(stateFor(f.lab,index));
+  await waitFor(() => p.sent.some(e=>e.type==='session.thinking.append' && e.content.includes('"finished":true')));
+  assert.equal(f.providers.length,1);
+  assert.equal(p.sent.filter(e=>e.type==='session.commentary.append').length,0);
+  assert.equal(p.sent.filter(e=>e.type==='session.instructions.append').length,1);
+  assert.equal(f.lab.events.filter(e=>e.type==='tool_call').length,callsBefore);
+  assert.equal(f.messages.filter(e=>e.type==='voice.reset_output').length,0);
+  f.send({type:'voice.stop'});await waitFor(()=>f.messages.some(e=>e.type==='voice.closed'));
+  await waitFor(()=>f.lab.events.some(e=>e.type==='tool_call'&&e.name==='lab_clear_highlight'));
 });
