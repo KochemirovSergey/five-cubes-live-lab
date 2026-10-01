@@ -2,8 +2,8 @@
 // Uses a typed request, not a microphone, and the currently connected real scene.
 import WebSocket from 'ws';
 import { ToolLoop } from '../server/tool-loop.js';
-import { liveTools } from '../server/mcp.js';
-import { liveInstructions, backendInstructions } from '../server/scenario.js';
+import { liveToolsFor } from '../server/mcp.js';
+import { instructionsFor } from '../server/scenario.js';
 import { readFile } from 'node:fs/promises';
 
 let inputAudio;
@@ -22,9 +22,12 @@ if (audioPath) {
 }
 
 if (!process.env.OPENAI_API_KEY) throw new Error('Set OPENAI_API_KEY in .env');
-const base = `http://127.0.0.1:${process.env.PORT || 3210}`;
+const connection=process.env.LAB_CONNECTION_FILE ? JSON.parse(await readFile(process.env.LAB_CONNECTION_FILE,'utf8')) : null;
+const base = connection ? connection.url.replace('ws:','http:').replace(/\/scene$/,'') : `http://127.0.0.1:${process.env.PORT || 3210}`;
 const config = await fetch(`${base}/api/bootstrap`).then(r => r.json());
 if (!config.state.connected) throw new Error('Connect the Unreal scene first');
+const { liveInstructions, backendInstructions } = instructionsFor(config.state.lab_id, config.state.mode);
+const liveTools = liveToolsFor(config.state.lab_id, config.state.mode);
 const headers = { Authorization: `Bearer ${config.token}`, 'x-lab-session': config.session_id, 'Content-Type': 'application/json' };
 const socket = new WebSocket('wss://api.openai.com/v1/live/sessions', {
   headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, handshakeTimeout: 15000,
@@ -67,7 +70,7 @@ socket.on('message', raw => {
       if (!closing) send({ type: 'session.input_audio.append', audio: chunk.toString('base64') });
     }, 20);
     if (!inputAudio) {
-      send({ type: 'response.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: `Прочитай состояние и подсвети указанный элемент ${process.env.TEST_TARGET_ID || 'panel.toggle'} независимо от текущего этапа, подпись: Проверка GPT-Live.` }] } });
+      send({ type: 'response.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: `Прочитай состояние и подсвети указанный элемент ${process.env.TEST_TARGET_ID || config.state.allowed_targets[0]} независимо от текущего этапа, подпись: Проверка GPT-Live.` }] } });
       send({ type: 'response.create' });
     }
   } else if (e.type === 'session.output_audio.delta') {

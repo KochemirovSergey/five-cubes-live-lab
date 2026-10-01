@@ -2,7 +2,7 @@
 #include "LabPanel.h"
 #include "IWebSocket.h"
 #include "WebSocketsModule.h"
-#include "Sound/SoundWaveProcedural.h"
+#include "LabPlaybackWave.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
@@ -35,7 +35,7 @@ void AVoiceConsole::BeginPlay()
         if (FPaths::FileExists(Node)) Server=FPlatformProcess::CreateProc(*Node,*Args,false,true,true,nullptr,0,*Runtime,nullptr);
         if (!Server.IsValid()) Status=TEXT("Не удалось запустить встроенный сервер. Проверьте сборку приложения.");
     }
-    Wave=NewObject<USoundWaveProcedural>(this); Wave->SetSampleRate(24000); Wave->NumChannels=1;
+    Wave=NewObject<ULabPlaybackWave>(this); Wave->SetSampleRate(24000); Wave->NumChannels=1;
     Wave->Duration=INDEFINITELY_LOOPING_DURATION; Wave->bLooping=false;
     Speaker=NewObject<UAudioComponent>(this); Speaker->bAutoActivate=false; Speaker->bIsUISound=true; Speaker->RegisterComponent(); Speaker->SetSound(Wave);
     auto* PC=UGameplayStatics::GetPlayerController(this,0);
@@ -56,9 +56,10 @@ void AVoiceConsole::Connect()
     Socket->OnBinaryMessage().AddWeakLambda(this,[this](const void* Data,SIZE_T Size,bool Last){
         if(!bReady||!Wave)return;
         AudioFragments.Append((const uint8*)Data,(int32)Size);
-        if(AudioFragments.Num()>96000||Wave->GetAvailableAudioByteCount()+AudioFragments.Num()>96000){Status=TEXT("Звук отстаёт. Начните разговор заново.");StopVoice();return;}
+        // Allow short network/render bursts; 2 s is a hard ceiling, not a target delay.
+        if(AudioFragments.Num()>96000||Wave->GetAvailableAudioByteCount()+AudioFragments.Num()>96000){StopMessage=TEXT("Воспроизведение отстало более чем на 2 секунды. Начните разговор снова.");UE_LOG(LogTemp,Warning,TEXT("Voice output backlog: queued=%u fragment=%d"),Wave->GetAvailableAudioByteCount(),AudioFragments.Num());StopVoice(true,TEXT("output_backpressure"));return;}
         if(!Last)return;
-        if(AudioFragments.Num()%2){StopVoice();return;}
+        if(AudioFragments.Num()%2){StopMessage=TEXT("Получен повреждённый звуковой пакет. Начните разговор снова.");StopVoice(true,TEXT("invalid_output_pcm"));return;}
         Wave->QueueAudio(AudioFragments.GetData(),AudioFragments.Num());AudioFragments.Reset();if(!Speaker->IsPlaying())Speaker->Play();
     });
     Socket->OnConnectionError().AddWeakLambda(this,[this](const FString&){bConnected=false;StopAudio();bStarting=false;Status=TEXT("Нет связи с сервером. Переподключение…");});
@@ -75,23 +76,27 @@ void AVoiceConsole::Receive(const FString& Raw)
         if(!bReady&&!bStarting&&(Type==TEXT("hello_ack")||WasSceneReady!=bSceneReady))Status=bSceneReady?TEXT("Готово. Нажмите «Начать разговор»."):TEXT("Ожидание сцены…");
     }else if(Type==TEXT("voice.reset_output")){AudioFragments.Reset();if(Speaker)Speaker->Stop();if(Wave)Wave->ResetAudio();}
     else if(Type==TEXT("voice.ready")){bStarting=false;bReady=true;Status=TEXT("Разговор подключён. Говорите свободно.");}
-    else if(Type==TEXT("voice.closed")){StopAudio();bStarting=false;bool Final=false;O->TryGetBoolField(TEXT("finalized"),Final);Status=Final?TEXT("Разговор завершён."):TEXT("Соединение завершено без подтверждения GPT-Live.");}
-    else if(Type==TEXT("voice.error")){FString Code;O->TryGetStringField(TEXT("code"),Code);StopAudio();bStarting=false;Status=TEXT("Ошибка: ")+Code;}
+    else if(Type==TEXT("voice.closed")){StopAudio();bStarting=false;bool Final=false;O->TryGetBoolField(TEXT("finalized"),Final);FString Reason;O->TryGetStringField(TEXT("reason"),Reason);UE_LOG(LogTemp,Display,TEXT("Voice closed: finalized=%d reason=%s"),Final,*Reason);Status=!StopMessage.IsEmpty()?StopMessage:Reason==TEXT("provider_closed")?TEXT("Голосовой сервис завершил сессию. Начните разговор снова."):Final?TEXT("Разговор завершён."):TEXT("Соединение завершено без подтверждения GPT-Live.");}
+    else if(Type==TEXT("voice.error")){FString Code;O->TryGetStringField(TEXT("code"),Code);StopAudio();bStarting=false;Status=Code.Contains(TEXT("TIMEOUT"))?TEXT("Сервис не ответил вовремя. Начните разговор снова; лабораторная доступна."):Code.Contains(TEXT("CONNECTION"))?TEXT("Нет связи с голосовым сервисом. Проверьте сеть и начните разговор снова."):Code==TEXT("API_KEY_MISSING")?TEXT("Не настроен ключ голосового сервиса."):Code==TEXT("ALREADY_STARTED")?TEXT("Разговор уже запущен."):Code==TEXT("AUDIO_BACKPRESSURE")?TEXT("Звук отстаёт. Начните разговор снова."):TEXT("Ошибка голосового сервиса. Начните разговор снова. Код: ")+Code;StopMessage=Status;}
     else if(Type==TEXT("voice.transcript")){FString Who,Text;O->TryGetStringField(TEXT("speaker"),Who);O->TryGetStringField(TEXT("text"),Text);if(Who!=LastSpeaker){Transcript+=Who==TEXT("user")?TEXT("\nВы: "):TEXT("\nАссистент: ");LastSpeaker=Who;}Transcript+=Text;Transcript=Transcript.Right(4000);}
-    else if(Type==TEXT("tool.result")){const TSharedPtr<FJsonObject>* Out;if(O->TryGetObjectField(TEXT("output"),Out)){bool Error=false;(*Out)->TryGetBoolField(TEXT("isError"),Error);ToolStatus=Error?TEXT("Команда не подтверждена сценой."):TEXT("MCP: команда подтверждена.");}}
+    else if(Type==TEXT("tool.result")){const TSharedPtr<FJsonObject>* Out;if(O->TryGetObjectField(TEXT("output"),Out)){bool Error=false;(*Out)->TryGetBoolField(TEXT("isError"),Error);ToolStatus=Error?TEXT("Команда не подтверждена сценой."):TEXT("MCP: команда подтверждена.");
+        FString Name;O->TryGetStringField(TEXT("name"),Name);const double Now=FPlatformTime::Seconds();
+        if(Name==TEXT("lab_highlight")&&!Timing.Speaking&&Timing.End>LastMeasuredEnd&&Now-Timing.End<30){Metric(TEXT("speech_end_to_highlight_ack"),(Now-Timing.End)*1000,!Error);LastMeasuredEnd=Timing.End;}
+}}
 }
 void AVoiceConsole::StartVoice()
 {
     UE_LOG(LogTemp,Display,TEXT("Lab UI: StartVoice clicked; connected=%d starting=%d ready=%d"),bConnected,bStarting,bReady);
     if(!bConnected){Status=TEXT("Нет связи с сервером. Ожидайте подключения.");return;}
     if(bStarting||bReady)return;if(!bSceneReady){Status=TEXT("Сцена пока не подключена.");return;}
-    bStarting=true;Status=TEXT("Проверка микрофона…");
+    StopMessage.Empty();bStarting=true;Status=TEXT("Проверка микрофона…");
     TWeakObjectPtr<AVoiceConsole> Weak(this);
     const uint32 Generation=++PermissionGeneration;
     RequestLabMicrophone([Weak,Generation](bool Granted){if(!Weak.IsValid()||Weak->bEnding||!Weak->bStarting||Weak->PermissionGeneration!=Generation)return;if(!Granted){Weak->bStarting=false;Weak->Status=TEXT("Разрешите микрофон: Настройки macOS → Конфиденциальность → Микрофон.");return;}Weak->OpenMicrophone();});
 }
 void AVoiceConsole::OpenMicrophone()
 {
+    Timing=FVoiceTiming();LastMeasuredEnd=0;Wave->LastNonSilent.store(0);
     LastCapture=FPlatformTime::Seconds();
     Capture=MakeUnique<Audio::FAudioCapture>();Audio::FAudioCaptureDeviceParams Params;
     if(!Capture->OpenAudioCaptureStream(Params,[this](const void* Data,int32 Frames,int32 Channels,int32 Rate,double,bool Overflow){
@@ -108,7 +113,7 @@ void AVoiceConsole::StopAudio()
     if(Speaker)Speaker->Stop();if(Wave)Wave->ResetAudio();
     FScopeLock Lock(&AudioLock);Resampler.Reset();Level=0;
 }
-void AVoiceConsole::StopVoice(){++PermissionGeneration;const bool Active=bStarting||bReady;StopAudio();if(Active){bStarting=true;Send(TEXT("voice.stop"));Status=TEXT("Завершение разговора…");}else bStarting=false;ClearHighlight();}
+void AVoiceConsole::StopVoice(bool Clear,const FString& Reason){++PermissionGeneration;const bool Active=bStarting||bReady;StopAudio();if(Active){UE_LOG(LogTemp,Display,TEXT("Voice stop requested: %s"),*Reason);bStarting=true;if(Socket&&Socket->IsConnected()){auto O=MakeShared<FJsonObject>();O->SetStringField(TEXT("type"),TEXT("voice.stop"));O->SetStringField(TEXT("reason"),Reason);Socket->Send(Json(O));}Status=StopMessage.IsEmpty()?TEXT("Завершение разговора…"):StopMessage;}else bStarting=false;if(Clear)ClearHighlight();}
 void AVoiceConsole::ClearHighlight() {
     if(!Socket||!Socket->IsConnected())return;
     auto O=MakeShared<FJsonObject>();O->SetStringField(TEXT("type"),TEXT("lab.command"));O->SetStringField(TEXT("name"),TEXT("lab_clear_highlight"));O->SetObjectField(TEXT("args"),MakeShared<FJsonObject>());Socket->Send(Json(O));
@@ -135,14 +140,23 @@ void AVoiceConsole::Tick(float D)
     std::vector<int16_t> PCM;bool Failed=false;
     {FScopeLock Lock(&AudioLock);Level=Resampler.Level;Failed=Resampler.Overflow||(bReady&&FPlatformTime::Seconds()-LastCapture>3);
       if(bReady)PCM=Resampler.Drain();else Resampler.Reset();}
-    if(Failed){StopVoice();Status=TEXT("Поток микрофона прерван. Начните разговор заново.");return;}
-    if(bReady&&Socket)for(size_t I=0;I<PCM.size();I+=480)Socket->Send(PCM.data()+I,960,true);
+    if(Failed){bool Overflow;{FScopeLock Lock(&AudioLock);Overflow=Resampler.Overflow;}StopMessage=Overflow?TEXT("Переполнен буфер микрофона. Начните разговор снова."):TEXT("Микрофон не передавал звук 3 секунды. Начните разговор снова.");StopVoice(true,Overflow?TEXT("capture_overflow"):TEXT("capture_timeout"));return;}
+    if(bReady&&Socket){
+        const double Now=FPlatformTime::Seconds(),Output=Wave?Wave->LastNonSilent.load():0;
+        for(size_t I=0;I+480<=PCM.size();I+=480){Timing.Input(PCM.data()+I,480,Now-double(PCM.size()-I-480)/24000.,Output);Socket->Send(PCM.data()+I,960,true);}
+        double Elapsed=Timing.Poll(Now,Output);if(Elapsed)Metric(TEXT("interruption_renderer"),Elapsed,Elapsed>0);
+    }
 }
 void AVoiceConsole::EndPlay(const EEndPlayReason::Type Reason)
 {
-    bEnding=true;StopVoice();if(Server.IsValid())Send(TEXT("desktop.shutdown"));if(Panel)Panel->RemoveFromParent();
+    bEnding=true;StopVoice(true,TEXT("app_exit"));if(Server.IsValid())Send(TEXT("desktop.shutdown"));if(Panel)Panel->RemoveFromParent();
     if(Socket){Socket->OnClosed().Clear();Socket->OnConnectionError().Clear();Socket->OnMessage().Clear();Socket->OnBinaryMessage().Clear();Socket->Close();}
     // Child watches parent lifetime; graceful shutdown is requested through its owner channel.
     if(Server.IsValid())FPlatformProcess::CloseProc(Server);
     Super::EndPlay(Reason);
+}
+
+void AVoiceConsole::Metric(const FString& Kind,double Milliseconds,bool Success){
+    if(!Socket||!Socket->IsConnected())return;
+    auto O=MakeShared<FJsonObject>();O->SetStringField(TEXT("type"),TEXT("voice.metric"));O->SetStringField(TEXT("kind"),Kind);O->SetNumberField(TEXT("milliseconds"),Milliseconds);O->SetBoolField(TEXT("success"),Success);Socket->Send(Json(O));
 }

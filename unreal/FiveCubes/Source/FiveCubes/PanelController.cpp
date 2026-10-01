@@ -1,6 +1,7 @@
 #include "PanelController.h"
 #include "LabScene.h"
 #include "Components/InputComponent.h"
+#include "Kismet/GameplayStatics.h"
 #include "Components/PrimitiveComponent.h"
 #include "Framework/Application/SlateApplication.h"
 void APanelController::SetupInputComponent() {
@@ -9,7 +10,8 @@ void APanelController::SetupInputComponent() {
 bool APanelController::PanelPoint(FVector2D Position,FVector& Point) const {
     FVector Origin,Direction;
     if(!DeprojectScreenPositionToWorld(Position.X,Position.Y,Origin,Direction) || FMath::Abs(Direction.X)<0.001) return false;
-    const double T=(45-Origin.X)/Direction.X;
+    auto* Scene=Cast<ALabScene>(UGameplayStatics::GetActorOfClass(this,ALabScene::StaticClass()));
+    const double T=((Scene?Scene->InteractionX():45)-Origin.X)/Direction.X;
     if(T<0)return false; Point=Origin+T*Direction; return true;
 }
 void APanelController::Press(FVector2D Position) {

@@ -26,7 +26,7 @@ shutil.copytree(root / 'node_modules', resources / 'node_modules', dirs_exist_ok
 shutil.copy2(root / 'package.json', resources / 'package.json')
 scenario_dir = resources / 'unreal/FiveCubes/Content/Lab'
 scenario_dir.mkdir(parents=True, exist_ok=True)
-for name in ('scenario.json', 'targets.json'):
+for name in [p.name for p in (root / 'unreal/FiveCubes/Content/Lab').glob('*.json')]:
     shutil.copy2(root / 'unreal/FiveCubes/Content/Lab' / name, scenario_dir / name)
 plist_path = app / 'Contents/Info.plist'
 with plist_path.open('rb') as f: plist = plistlib.load(f)

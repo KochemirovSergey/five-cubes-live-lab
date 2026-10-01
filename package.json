@@ -15,7 +15,11 @@
     "check": "node --check server/index.js && node --check server/voice.js && node --check server/tool-loop.js && npm test",
     "package:mac": "bash scripts/package-mac.sh",
     "test:audio": "mkdir -p .runtime/tests && clang++ -std=c++17 test/resampler.cpp -o .runtime/tests/resampler && .runtime/tests/resampler",
-    "test:scenario": "mkdir -p .runtime/tests && clang++ -std=c++17 test/panel-progress.cpp -o .runtime/tests/panel-progress && .runtime/tests/panel-progress"
+    "test:scenario": "mkdir -p .runtime/tests && clang++ -std=c++17 test/panel-progress.cpp -o .runtime/tests/panel-progress && .runtime/tests/panel-progress",
+    "test:physics": "mkdir -p .runtime/tests && clang++ -std=c++17 test/oberbeck.cpp -o .runtime/tests/oberbeck && .runtime/tests/oberbeck",
+    "test:full": "mkdir -p .runtime/tests && clang++ -std=c++17 test/oberbeck-full.cpp -o .runtime/tests/oberbeck-full && .runtime/tests/oberbeck-full",
+    "test:guidance": "mkdir -p .runtime/tests && clang++ -std=c++17 test/oberbeck-guidance.cpp -o .runtime/tests/oberbeck-guidance && .runtime/tests/oberbeck-guidance",
+    "test:voice-timing": "mkdir -p .runtime/tests && clang++ -std=c++17 test/voice-timing.cpp -o .runtime/tests/voice-timing && .runtime/tests/voice-timing"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",

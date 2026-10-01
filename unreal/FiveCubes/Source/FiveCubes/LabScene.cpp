@@ -105,14 +105,17 @@ void ALabScene::BeginPlay() {
     auto* Light=GetWorld()->SpawnActor<ADirectionalLight>(FVector(700,0,300),FRotator(-15,180,0));
     Light->GetLightComponent()->SetMobility(EComponentMobility::Movable);Light->GetLightComponent()->SetIntensity(5);
     Camera=GetWorld()->SpawnActor<ACameraActor>(FVector(1150,0,70),FRotator(0,180,0));Camera->GetCameraComponent()->SetFieldOfView(60);
-    ResetExercise();
+    TArray<USceneComponent*> Existing;GetComponents<USceneComponent>(Existing);
+    for(auto* C:Existing)if(C!=RootComponent)PanelParts.Add(C);
+    BuildOberbeck();SelectLab(TEXT("menu"));
     ConnectionFile=FPaths::ConvertRelativePathToFull(FPaths::ProjectDir()/TEXT("../../.runtime/connection.json"));
     FParse::Value(FCommandLine::Get(),TEXT("LabConnectionFile="),ConnectionFile);
     if(!AVoiceConsole::ConnectionPath.IsEmpty())ConnectionFile=AVoiceConsole::ConnectionPath;
+    if(FParse::Param(FCommandLine::Get(),TEXT("ObSelfTest"))){bool Ok=RunFullSelfTest();FullMode=false;UE_LOG(LogTemp,Display,TEXT("OB_FULL_SELFTEST: %s"),Ok?TEXT("PASS"):TEXT("FAIL"));FPlatformMisc::RequestExitWithStatus(false,Ok?0:1);return;}
     Connect();
 }
-FString ALabScene::Goal() const {return !bConfigured?TEXT("Ошибка загрузки сценария"):Progress.Done()?TEXT("Упражнение выполнено"):Goals[Progress.Step];}
-FString ALabScene::ProgressText() const {return Progress.Done()?TEXT("Выполнено 4 из 4"):FString::Printf(TEXT("Шаг %d из 4"),Progress.Step+1);}
+FString ALabScene::Goal() const {if(ActiveLab==TEXT("menu"))return TEXT("Выберите лабораторную");if(ActiveLab==TEXT("oberbeck")&&FullMode)return Done()?TEXT("Все пять заданий выполнены"):Titles[Step()];if(ActiveLab==TEXT("oberbeck"))return !bOberbeckValid?TEXT("Ошибка физического профиля"):Done()?TEXT("Два опыта выполнены. Сравните результаты."):Goals[Step()];return !bConfigured?TEXT("Ошибка загрузки сценария"):Progress.Done()?TEXT("Упражнение выполнено"):Goals[Progress.Step];}
+FString ALabScene::ProgressText() const {if(ActiveLab==TEXT("menu"))return TEXT("Виртуальная лаборатория");if(ActiveLab==TEXT("oberbeck")&&FullMode)return FString::Printf(TEXT("Полная лабораторная • Задание %d из 5"),FMath::Min(Step()+1,5));if(ActiveLab==TEXT("oberbeck"))return FString::Printf(TEXT("Обербек • Опыт %d из 2"),FMath::Min(Step()+1,2));return Progress.Done()?TEXT("Выполнено 4 из 4"):FString::Printf(TEXT("Шаг %d из 4"),Progress.Step+1);}
 void ALabScene::Refresh() {
     float A=FMath::DegreesToRadians(Progress.Angle);
     Pointer->SetRelativeLocation(FVector(60,375-FMath::Sin(A)*28,35+FMath::Cos(A)*28));
@@ -126,9 +129,10 @@ void ALabScene::Refresh() {
         if(auto* W=Cast<ULabWorldLabel>(Indicators[I]->GetUserWidgetObject()))W->Caption(I<Progress.Step?TEXT("Выполнено"):I==Progress.Step?TEXT("Текущий шаг"):TEXT("Ожидает"),I==Progress.Step);
     }
 }
-void ALabScene::ResetExercise(){if(!bConfigured)return;Dragging.Empty();Progress.Reset();SliderPreview=0;SceneVersion=FGuid::NewGuid().ToString();StateSeq=0;ClearHighlight();Refresh();SendState();}
+void ALabScene::ResetExercise(){if(!bConfigured)return;if(ActiveLab==TEXT("oberbeck")&&FullMode){Notice=TEXT("Новая работа создаётся из меню; текущая сохраняется автоматически.");return;}if(ActiveLab==TEXT("oberbeck")){Experiment.Reset();Notice.Empty();SceneVersion=FGuid::NewGuid().ToString();StateSeq=0;ClearHighlight();RefreshOberbeck();SendState();return;}Dragging.Empty();Progress.Reset();SliderPreview=0;SceneVersion=FGuid::NewGuid().ToString();StateSeq=0;ClearHighlight();Refresh();SendState();}
 void ALabScene::ApplyHighlightPhase(bool Lit){
     bHighlightLit=Lit;
+    if(ActiveLab==TEXT("oberbeck")){if(auto* Mesh=OberbeckMeshes.Find(HighlightTarget))(*Mesh)->SetMaterial(0,Lit?static_cast<UMaterialInterface*>(HighlightMaterial):OberbeckOriginal[HighlightTarget].Get());return;}
     UMaterialInterface* Plain=BaseMaterial;
     UMaterialInterface* Accent=AccentMaterial;
     UMaterialInterface* Bright=HighlightMaterial;
@@ -139,14 +143,26 @@ void ALabScene::ApplyHighlightPhase(bool Lit){
     else if(HighlightTarget==Targets[2])for(auto& Key:Keys)Key.Value->SetMaterial(0,Lit?Bright:Plain);
 }
 void ALabScene::ClearHighlight(){
+    if(ActiveLab==TEXT("oberbeck")){for(auto& Entry:OberbeckMeshes)Entry.Value->SetMaterial(0,OberbeckOriginal[Entry.Key]);if(OberbeckCaption)if(auto* L=Cast<ULabWorldLabel>(OberbeckCaption->GetUserWidgetObject()))L->Caption(TEXT(""),false);}
     HighlightIndex=-1;HighlightTarget.Empty();bHighlightLit=false;
     Knob->SetMaterial(0,BaseMaterial);Slider->SetMaterial(0,AccentMaterial);Lever->SetMaterial(0,AccentMaterial);
     for(auto& Key:Keys)Key.Value->SetMaterial(0,BaseMaterial);
-    for(int I=0;I<Labels.Num();I++)if(auto* W=Cast<ULabWorldLabel>(Labels[I]->GetUserWidgetObject()))W->Caption(FString::Printf(TEXT("%02d  %s"),I+1,*Titles[I]),false);
+    for(int I=0;I<Labels.Num()&&ActiveLab==TEXT("training_panel");I++)if(auto* W=Cast<ULabWorldLabel>(Labels[I]->GetUserWidgetObject()))W->Caption(FString::Printf(TEXT("%02d  %s"),I+1,*Titles[I]),false);
 }
 void ALabScene::ActionChanged(int Before){Refresh();bStateDirty=true;if(Before!=Progress.Step){SendState();}UE_LOG(LogTemp,Display,TEXT("Panel action: stage=%d finished=%d"),Progress.Step+1,Progress.Done());}
 void ALabScene::PressControl(const FString& Id,const FVector& P){
-    if(!bConfigured)return;int Before=Progress.Step;
+    if(!bConfigured||ActiveLab==TEXT("menu"))return;
+    if(ActiveLab==TEXT("oberbeck")){
+        UpdateExperimentClock();if(FullMode&&(Replay||bSaveBlocked))return;if(Experiment.Paused){Notice=TEXT("Нажмите «Продолжить».");return;}
+        if(Id==TEXT("oberbeck.release")||Id.StartsWith(TEXT("oberbeck.timer."))){ExperimentAction(Id);return;}
+        if(!Experiment.Editable()){Notice=TEXT("Подготовка доступна после «Новый опыт»; во время измерения детали закреплены.");return;}
+        if(FullMode&&(Id==TEXT("oberbeck.caliper")||Id==TEXT("oberbeck.ruler")||Id==TEXT("oberbeck.height_cursor"))){Dragging=Id;return;}
+        if(Id.StartsWith(TEXT("oberbeck.pulley."))){Experiment.Pulley=Id.EndsWith(TEXT("large"))?1:0;RefreshOberbeck();SendState();return;}
+        if(Id==TEXT("oberbeck.flywheel")||Id.StartsWith(TEXT("oberbeck.spoke."))){Dragging=TEXT("wind");LastAngle=FMath::Atan2(P.Z-95,P.Y);}
+        else if(Id.StartsWith(TEXT("oberbeck.mass."))){Dragging=Id;}
+        return;
+    }
+    int Before=Progress.Step;
     if(Id==Targets[0]){Dragging=Id;LastAngle=FMath::RadiansToDegrees(FMath::Atan2(375-P.Y,P.Z-35));}
     else if(Id==Targets[1]){Dragging=Id;DragControl(P);}
     else if(Id==Targets[3]){Progress.Toggle();ActionChanged(Before);SendState();}
@@ -154,15 +170,28 @@ void ALabScene::PressControl(const FString& Id,const FVector& P){
 }
 void ALabScene::DragControl(const FVector& P){
     if(Dragging.IsEmpty())return;
+    if(ActiveLab==TEXT("oberbeck")){
+        if(!Experiment.Editable())return;
+        if(Dragging==TEXT("wind")){const double A=FMath::Atan2(P.Z-95,P.Y);if(FVector2D(P.Y,P.Z-95).Size()<3)return;Experiment.Wind(FMath::FindDeltaAngleRadians(LastAngle,A));LastAngle=A;}
+        else if(FullMode&&Dragging==TEXT("oberbeck.caliper"))SetInstrument(Dragging,FMath::Clamp((P.Y+Experiment.Radius()*100)/100.,0.,.08));
+        else if(FullMode&&Dragging==TEXT("oberbeck.height_cursor"))SetInstrument(Dragging,FMath::Clamp((P.Z-2)/100.,0.,.8));
+        else if(FullMode&&Dragging==TEXT("oberbeck.ruler"))SetInstrument(Dragging,FMath::Clamp((P.Y*FMath::Cos(Experiment.Angle+PI/4)+(P.Z-95)*FMath::Sin(Experiment.Angle+PI/4))/100.,0.,.25));
+        else {const int I=FCString::Atoi(*Dragging.Right(1))-1;if(I<0||I>3)return;const double A=Experiment.Angle+PI/4+I*PI/2;double R=(P.Y*FMath::Cos(A)+(P.Z-95)*FMath::Sin(A))/100;
+            if(FullMode){bool Storage=FVector2D(P.Y-StoragePosition(I).Y,P.Z-StoragePosition(I).Z).Size()<9;double Perp=FMath::Abs(-P.Y*FMath::Sin(A)+(P.Z-95)*FMath::Cos(A));if(Storage)Experiment.SetMass(I,false,Experiment.MassR[I]);else if(Perp<9&&R>.04)Experiment.SetMass(I,true,R);}
+            else Experiment.SetR(R);
+        }
+        Notice.Empty();RefreshOberbeck();bStateDirty=true;return;
+    }
     if(Dragging==Targets[0]){
         if(FVector2D(375-P.Y,P.Z-35).Size()<12)return;
         float A=FMath::RadiansToDegrees(FMath::Atan2(375-P.Y,P.Z-35));float Delta=FMath::FindDeltaAngleDegrees(LastAngle,A);LastAngle=A;
         if(FMath::Abs(Delta)>0.02){int Before=Progress.Step;Progress.Rotate(Delta);ActionChanged(Before);}
     }else if(Dragging==Targets[1]){SliderPreview=FMath::Clamp((195-P.Y)/140.f,0.f,1.f);Refresh();}
 }
-void ALabScene::ReleaseControl(){if(Dragging.IsEmpty())return;int Before=Progress.Step;if(Dragging==Targets[1]){Progress.Slide(SliderPreview>=0.5);SliderPreview=Progress.Right?1:0;}Dragging.Empty();ActionChanged(Before);SendState();}
+void ALabScene::ReleaseControl(){if(Dragging.IsEmpty())return;if(ActiveLab==TEXT("oberbeck")){Dragging.Empty();if(FullMode)FullChanged();else SendState();return;}int Before=Progress.Step;if(Dragging==Targets[1]){Progress.Slide(SliderPreview>=0.5);SliderPreview=Progress.Right?1:0;}Dragging.Empty();ActionChanged(Before);SendState();}
 void ALabScene::Tick(float D){
     Super::Tick(D);if(!bConfigured)return;
+    if(ActiveLab==TEXT("oberbeck")){UpdateExperimentClock();RefreshOberbeck();bStateDirty=true;}
     if(!HighlightTarget.IsEmpty()){
         const bool Lit=FMath::Fmod(FPlatformTime::Seconds()-HighlightStartedAt,1.0)<0.5;
         if(Lit!=bHighlightLit)ApplyHighlightPhase(Lit);
@@ -209,14 +238,18 @@ void ALabScene::SendState(){
     bStateDirty=false;LastStateAt=FPlatformTime::Seconds();
     auto S=MakeShared<FJsonObject>();
     S->SetStringField(TEXT("session_id"),SessionId);S->SetStringField(TEXT("scene_version"),SceneVersion);S->SetNumberField(TEXT("state_seq"),++StateSeq);
-    S->SetStringField(TEXT("stage_id"),Progress.Done()?TEXT("complete"):StageIds[Progress.Step]);
-    S->SetNumberField(TEXT("stage"),FMath::Min(Progress.Step+1,4));S->SetNumberField(TEXT("stages_total"),4);S->SetBoolField(TEXT("finished"),Progress.Done());
+    S->SetStringField(TEXT("stage_id"),Done()?TEXT("complete"):StageIds[Step()]);
+    S->SetStringField(TEXT("lab_id"),ActiveLab);if(ActiveLab==TEXT("oberbeck"))S->SetStringField(TEXT("mode"),FullMode?TEXT("full"):TEXT("intro"));S->SetNumberField(TEXT("stage"),FMath::Min(Step()+1,StageIds.Num()));S->SetNumberField(TEXT("stages_total"),StageIds.Num());S->SetBoolField(TEXT("finished"),Done());
     TArray<TSharedPtr<FJsonValue>> Allowed,Completed;
     for(const auto& Id:CatalogIds)Allowed.Add(MakeShared<FJsonValueString>(Id));
-    for(int I=0;I<Progress.Step;I++)Completed.Add(MakeShared<FJsonValueString>(StageIds[I]));
+    for(int I=0;I<Step();I++)Completed.Add(MakeShared<FJsonValueString>(StageIds[I]));
     S->SetArrayField(TEXT("allowed_targets"),Allowed);S->SetArrayField(TEXT("completed"),Completed);
     auto V=MakeShared<FJsonObject>();V->SetNumberField(TEXT("rotary_angle"),Progress.Angle);V->SetStringField(TEXT("slider"),Progress.Right?TEXT("right"):TEXT("left"));
-    V->SetBoolField(TEXT("toggle_up"),Progress.Up);V->SetStringField(TEXT("keypad_input"),UTF8_TO_TCHAR(Progress.Digits.c_str()));V->SetBoolField(TEXT("code_error"),Progress.CodeError);S->SetObjectField(TEXT("instrument_state"),V);
+    V->SetBoolField(TEXT("toggle_up"),Progress.Up);V->SetStringField(TEXT("keypad_input"),UTF8_TO_TCHAR(Progress.Digits.c_str()));V->SetBoolField(TEXT("code_error"),Progress.CodeError);if(ActiveLab==TEXT("oberbeck")){
+        V=MakeShared<FJsonObject>();V->SetStringField(TEXT("phase"),Experiment.Falling?TEXT("falling"):Experiment.Landed?TEXT("landed"):TEXT("preparing"));
+        V->SetNumberField(TEXT("pulley"),Experiment.Pulley);V->SetNumberField(TEXT("radius"),Experiment.R);V->SetNumberField(TEXT("height"),Experiment.H);V->SetNumberField(TEXT("current_height"),Experiment.CurrentHeight());V->SetNumberField(TEXT("angle"),Experiment.Angle);V->SetNumberField(TEXT("stopwatch"),Experiment.Stopwatch());V->SetBoolField(TEXT("timer_running"),Experiment.TimerRunning);V->SetBoolField(TEXT("paused"),Experiment.Paused);
+        TArray<TSharedPtr<FJsonValue>> Records;for(const auto& R:Experiment.Records){auto O=MakeShared<FJsonObject>();O->SetNumberField(TEXT("radius"),R.R);O->SetNumberField(TEXT("height"),R.H);O->SetNumberField(TEXT("time"),R.Time);O->SetNumberField(TEXT("pulley"),R.Pulley);Records.Add(MakeShared<FJsonValueObject>(O));}V->SetArrayField(TEXT("records"),Records);
+    }if(FullMode&&ActiveLab==TEXT("oberbeck"))V=FullPublicState();S->SetObjectField(TEXT("instrument_state"),V);
     auto M=MakeShared<FJsonObject>();M->SetStringField(TEXT("type"),TEXT("state"));M->SetObjectField(TEXT("state"),S);Send(M);
 }
 void ALabScene::Receive(const FString& Raw){
@@ -224,19 +257,21 @@ void ALabScene::Receive(const FString& Raw){
     FString Type,Id,Session,Version,Stage;if(!M->TryGetStringField(TEXT("type"),Type))return;
     if(Type==TEXT("hello_ack")){SendState();return;}
     if(!M->TryGetStringField(TEXT("command_id"),Id)||!M->TryGetStringField(TEXT("session_id"),Session)||!M->TryGetStringField(TEXT("scene_version"),Version)||!M->TryGetStringField(TEXT("stage_id"),Stage))return;
-    FString Error;FString Current=Progress.Done()?TEXT("complete"):StageIds[Progress.Step];
+    FString Error;FString Current=Done()?TEXT("complete"):StageIds[Step()];
     if(Session!=SessionId||Version!=SceneVersion||Stage!=Current)Error=TEXT("STALE_SCENE");
     else if(Type==TEXT("clear"))ClearHighlight();
     else if(Type==TEXT("get_state"))SendState();
     else if(Type==TEXT("highlight")){
         FString Target,Text;M->TryGetStringField(TEXT("target_id"),Target);M->TryGetStringField(TEXT("text"),Text);
         if(!CatalogSections.Contains(Target)||Text.Len()>120)Error=TEXT("TARGET_OR_TEXT_NOT_ALLOWED");
+        else if(FullMode&&!(Error=TargetVisibilityError(Target)).IsEmpty()){}
         else {
             ClearHighlight();HighlightIndex=CatalogSections[Target];HighlightText=Text;
             HighlightTarget=Target;HighlightStartedAt=FPlatformTime::Seconds();ApplyHighlightPhase(true);
-            if(auto* W=Cast<ULabWorldLabel>(Labels[HighlightIndex]->GetUserWidgetObject()))W->Caption(Text.IsEmpty()?Titles[HighlightIndex]:Text,true);
+            if(ActiveLab==TEXT("oberbeck")){if(auto* W=Cast<ULabWorldLabel>(OberbeckCaption->GetUserWidgetObject()))W->Caption(Text.IsEmpty()?Target:Text,true);}
+            else if(auto* W=Cast<ULabWorldLabel>(Labels[HighlightIndex]->GetUserWidgetObject()))W->Caption(Text.IsEmpty()?Titles[HighlightIndex]:Text,true);
         }
     }else Error=TEXT("UNKNOWN_COMMAND");
     auto Ack=MakeShared<FJsonObject>();Ack->SetStringField(TEXT("type"),TEXT("ack"));Ack->SetStringField(TEXT("command_id"),Id);Ack->SetStringField(TEXT("session_id"),SessionId);Ack->SetStringField(TEXT("scene_version"),Version);Ack->SetBoolField(TEXT("ok"),Error.IsEmpty());if(!Error.IsEmpty())Ack->SetStringField(TEXT("error"),Error);Send(Ack);
 }
-void ALabScene::EndPlay(const EEndPlayReason::Type Reason){bEnding=true;GetWorldTimerManager().ClearTimer(RetryTimer);if(Socket){Socket->OnConnected().Clear();Socket->OnConnectionError().Clear();Socket->OnClosed().Clear();Socket->OnMessage().Clear();Socket->Close();Socket.Reset();}Super::EndPlay(Reason);}
+void ALabScene::EndPlay(const EEndPlayReason::Type Reason){if(FullMode)SaveLab();bEnding=true;GetWorldTimerManager().ClearTimer(RetryTimer);if(Socket){Socket->OnConnected().Clear();Socket->OnConnectionError().Clear();Socket->OnClosed().Clear();Socket->OnMessage().Clear();Socket->Close();Socket.Reset();}Super::EndPlay(Reason);}

@@ -11,3 +11,6 @@ unreal/**/Saved/
 unreal/**/DerivedDataCache/
 .DS_Store
 unreal/**/Build/Mac/
+
+# Raw OCR exports contain temporary signed image URLs.
+laba_hse/*.pdf_by_PaddleOCR-*

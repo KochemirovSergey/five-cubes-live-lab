@@ -1,0 +1,204 @@
+{
+  "targets": [
+    {
+      "id": "oberbeck.flywheel",
+      "label": "Маховик",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.pulley.small",
+      "label": "Малый шкив",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.pulley.large",
+      "label": "Большой шкив",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.hanger",
+      "label": "Подвес",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.scale",
+      "label": "Шкала высоты",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.release",
+      "label": "Фиксатор: отпустить",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.timer.toggle",
+      "label": "Секундомер: старт/стоп",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.timer.reset",
+      "label": "Секундомер: сброс",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.mass.1",
+      "label": "Груз 1",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.mass.2",
+      "label": "Груз 2",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.mass.3",
+      "label": "Груз 3",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.mass.4",
+      "label": "Груз 4",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.spoke.1",
+      "label": "Спица 1",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.spoke.2",
+      "label": "Спица 2",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.spoke.3",
+      "label": "Спица 3",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.spoke.4",
+      "label": "Спица 4",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.storage.1",
+      "section": "apparatus",
+      "label": "Место хранения груза 1"
+    },
+    {
+      "id": "oberbeck.storage.2",
+      "section": "apparatus",
+      "label": "Место хранения груза 2"
+    },
+    {
+      "id": "oberbeck.storage.3",
+      "section": "apparatus",
+      "label": "Место хранения груза 3"
+    },
+    {
+      "id": "oberbeck.storage.4",
+      "section": "apparatus",
+      "label": "Место хранения груза 4"
+    },
+    {
+      "id": "oberbeck.caliper",
+      "section": "apparatus",
+      "label": "Подвижная губка штангенциркуля"
+    },
+    {
+      "id": "oberbeck.caliper.fixed",
+      "section": "apparatus",
+      "label": "Неподвижная губка штангенциркуля"
+    },
+    {
+      "id": "oberbeck.ruler",
+      "section": "apparatus",
+      "label": "Курсор линейки R"
+    },
+    {
+      "id": "oberbeck.height_cursor",
+      "section": "apparatus",
+      "label": "Курсор высоты"
+    },
+    {
+      "id": "oberbeck.journal",
+      "section": "apparatus",
+      "label": "Вкладка журнала измерений"
+    },
+    {
+      "id": "oberbeck.calculations",
+      "section": "apparatus",
+      "label": "Вкладка расчётов"
+    },
+    {
+      "id": "oberbeck.apparatus",
+      "label": "Вкладка Прибор",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.review",
+      "label": "Вкладка Разбор",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.resume",
+      "label": "Продолжить после паузы",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.new_trial",
+      "label": "Новый опыт",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.series.open",
+      "label": "Открыть новую серию",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.input.D0",
+      "label": "Ввод диаметра малого шкива",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.input.D1",
+      "label": "Ввод диаметра большого шкива",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.input.R",
+      "label": "Ввод расстояния R",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.input.h",
+      "label": "Ввод высоты h",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.attempt.input",
+      "label": "Ввод времени текущей попытки",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.answer.input",
+      "label": "Выбранное поле расчёта",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.conclusion",
+      "label": "Выбор вывода по двум оценкам",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.coefficients",
+      "label": "Коэффициенты погрешностей",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.export",
+      "label": "Экспорт протокола",
+      "section": "apparatus"
+    }
+  ]
+}

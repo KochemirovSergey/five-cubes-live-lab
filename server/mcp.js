@@ -2,12 +2,13 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { laboratory } from './laboratories.js';
 import { TARGETS } from './targets.js';
 import { z } from 'zod';
 
 export const toolSchemas = {
-  lab_get_state: { description: 'Read the current scene and allowed panel IDs.', properties: {} },
-  lab_highlight: { description: 'Highlight a panel control; success requires acknowledgment from the scene.',
+  lab_get_state: { description: 'Read the current scene and available object IDs.', properties: {} },
+  lab_highlight: { description: 'Highlight a scene element; success requires acknowledgment from the scene.',
     properties: { target_id: { type: 'string', enum: TARGETS },
       text: { type: 'string', maxLength: 120 } } },
   lab_clear_highlight: { description: 'Clear the scene highlight.', properties: {} },
@@ -41,3 +42,5 @@ export async function callMcp(baseUrl, lab, name, args, revision) {
     return await client.callTool({ name, arguments: args });
   } finally { await client.close(); }
 }
+
+export function liveToolsFor(id, mode = 'intro') { return liveTools.map(t => t.name !== 'lab_highlight' ? t : { ...t, parameters: { ...t.parameters, properties: { ...t.parameters.properties, target_id: { type: 'string', enum: laboratory(id, mode).targets.map(x => x.id) } } } }); }

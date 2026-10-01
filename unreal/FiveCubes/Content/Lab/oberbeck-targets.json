@@ -1,0 +1,84 @@
+{
+  "targets": [
+    {
+      "id": "oberbeck.flywheel",
+      "label": "Маховик",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.pulley.small",
+      "label": "Малый шкив",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.pulley.large",
+      "label": "Большой шкив",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.hanger",
+      "label": "Подвес",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.scale",
+      "label": "Шкала высоты",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.release",
+      "label": "Фиксатор: отпустить",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.timer.toggle",
+      "label": "Секундомер: старт/стоп",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.timer.reset",
+      "label": "Секундомер: сброс",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.mass.1",
+      "label": "Груз 1",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.mass.2",
+      "label": "Груз 2",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.mass.3",
+      "label": "Груз 3",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.mass.4",
+      "label": "Груз 4",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.spoke.1",
+      "label": "Спица 1",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.spoke.2",
+      "label": "Спица 2",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.spoke.3",
+      "label": "Спица 3",
+      "section": "apparatus"
+    },
+    {
+      "id": "oberbeck.spoke.4",
+      "label": "Спица 4",
+      "section": "apparatus"
+    }
+  ]
+}
